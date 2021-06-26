@@ -1,39 +1,28 @@
-// MODULE:  cql.pest
-// PURPOSE: A BNF grammar for the Common Query Language (CQL).
-
 //=============================================================================#
 // A CQL filter is a logically connected expression of one or more predicates.
 // Predicates include scalar or comparison predicates, spatial predicates or
 // temporal predicates.
 //=============================================================================#
-/* booleanValueExpression = { andExpression
-                          | orExpression
-                          | notExpression
-                          | comparisonPredicate
-                          | spatialPredicate
-                          | temporalPredicate
-                          | arrayPredicate
-                          | subExpression }
+cql = _{ SOI ~ booleanValueExpression ~ EOI }
 
-andExpression = _{ booleanValueExpression ~ "AND" ~ booleanValueExpression }
-
-orExpression = _{ booleanValueExpression ~ "OR" ~ booleanValueExpression }
-
-notExpression = _{ "NOT" ~ booleanValueExpression }
-
-subExpression = _{ leftParen ~ booleanValueExpression ~ rightParen } */
-
-
-booleanValueExpression     =  { term ~ (("AND" | "OR") ~ term)* }
-term                       =  { "NOT"* ~ subExpression}
-subExpression              = _{ leftParen ~ booleanValueExpression ~ rightParen | terminal }
+booleanValueExpression     = _{ term ~ ((and | or) ~ term)* }
+term                       = _{ not* ~ subExpression}
+subExpression              = _{ terminal | leftParen ~ booleanValueExpression ~ rightParen}
 terminal                   = _{ comparisonPredicate
                               | spatialPredicate
                               | temporalPredicate
                               | arrayPredicate }
 
+and = { ^"AND" }
+or = { ^"OR" }
+not = { ^"NOT" }
 
+WHITESPACE = _{ " " | "\t" | "\n" }
 
+// A comparison predicate evaluates if two scalar expression statisfy the
+// specified comparison operator.  The comparion operators includes an operator
+// to evaluate pattern matching expressions (LIKE), a range evaluation operator
+// and an operator to test if a scalar expression is NULL or not.
 comparisonPredicate = _{ binaryComparisonPredicate
                        | isLikePredicate
                        | isBetweenPredicate
@@ -41,7 +30,7 @@ comparisonPredicate = _{ binaryComparisonPredicate
                        | isNullPredicate }
 
 
-
+// Binary comparison predicate
 binaryComparisonPredicate = _{ scalarExpression
                                ~ comparisonOperator
                                ~ scalarExpression }
@@ -53,120 +42,144 @@ scalarExpression = _{ characterLiteral
                     | function
                     | arithmeticExpression }
 
-comparisonOperator = _{ eq | neq | lt | gt | lteq | gteq }
-
-neq = _{ lt ~ gt }
-
-gteq = _{ gt ~ eq }
-
-lteq = _{ lt ~ eq }
+comparisonOperator = { ">=" | "<=" | "<>" | "=" |  "<" | ">" }
 
 
 
-isLikePredicate = _{ scalarExpression ~ "LIKE" ~ patternExpression
-                    ~ ("WILDCARD" ~ quote ~ alpha ~ quote)?
-                    ~ ("SINGLECHAR" ~ quote ~ alpha ~ quote)?
-                    ~ ("ESCAPECHAR" ~ quote ~ alpha ~ quote)?
-                    ~ ("NOCASE" ~ booleanLiteral)? }
+// LIKE predicate
+isLikePredicate = _{ scalarExpression ~ not? ~ like ~ patternExpression
+                    ~ (^"WILDCARD" ~ "'" ~ ( alpha | "#") ~ "'")?
+                    ~ (^"SINGLECHAR" ~ "'" ~ alpha ~ "'")?
+                    ~ (^"ESCAPECHAR" ~ "'" ~ alpha ~ "'")?
+                    ~ (^"NOCASE" ~ booleanLiteral)? }
 
 patternExpression = _{ characterLiteral }
 
+like = { ^"LIKE" }
 
 
-isBetweenPredicate = _{ numericExpression ~ ("NOT")? ~ "BETWEEN"
-                       ~ numericExpression ~ "AND" ~ numericExpression }
+// BETWEEN predicate
+isBetweenPredicate = _{ numericExpression ~ not? ~ between
+                       ~ numericExpression ~ and ~ numericExpression }
 
-numericExpression = _{ numericLiteral
-                     | propertyName
-                     | function
-                     | arithmeticExpression }
-
-
-
-isInListPredicate = _{ inListOperand ~ ("NOT")? ~ "IN" ~ leftParen ~ inList ~ rightParen}
-
-inList = _{ inListOperand ~ ( comma ~ inListOperand )*}
-
-inListOperand = _{ scalarExpression
-                 | temporalLiteral
-                 | spatialLiteral}
-
-
-
-isNullPredicate = _{ scalarExpression ~ "IS" ~ ("NOT")? ~ "NULL"}
-
-
-
-
-
-spatialPredicate = _{ spatialOperator
-                     ~ leftParen ~ geomExpression ~ comma ~ geomExpression ~ rightParen}
-
-
-
-
-
-spatialOperator = _{ "INTERSECTS"
-                   | "EQUALS"
-                   | "DISJOINT"
-                   | "TOUCHES"
-                   | "WITHIN"
-                   | "OVERLAPS"
-                   | "CROSSES"
-                   | "CONTAINS"}
-
-
-
-
-
-geomExpression = _{ spatialLiteral
-                  | propertyName
-                  | function}
-
-
-
-
-
-temporalPredicate = _{ temporalExpression ~ temporalOperator ~ temporalExpression}
-
-temporalExpression = _{ temporalLiteral
+numericExpression  = _{ numericLiteral
                       | propertyName
-                      | function}
+                      | function
+                      | arithmeticExpression }
 
-temporalOperator = _{ "ANYINTERACTS"
-                    | "BEFORE"
-                    | "AFTER"
-                    | "MEETS"
-                    | "METBY"
-                    | "TOVERLAPS"
-                    | "OVERLAPPEDBY"
-                    | "BEGINS"
-                    | "BEGUNBY"
-                    | "DURING"
-                    | "TCONTAINS"
-                    | "ENDS"
-                    | "ENDEDBY"
-                    | "TEQUALS" }
+between = { ^"BETWEEN" }
+
+// IN LIST predicate
+isInListPredicate = _{ inListOperand ~ not? ~ inListOperator ~ leftParen ~ inList ~ rightParen }
+
+inList            = _{ inListOperand ~ ( comma ~ inListOperand )* }
+
+inListOperand     = _{ scalarExpression | temporalLiteral | spatialLiteral }
+
+inListOperator = { ^"IN" }
+
+// IS NULL predicate
+isNullPredicate = _{ scalarExpression ~ is ~ not? ~ null}
+
+is   = { ^"IS" }
+null = { ^"NULL"}
+
+// A spatial predicate evaluates if two spatial expressions satisfy the
+// specified spatial operator.
+spatialPredicate = _{ spatialOperator ~ leftParen ~ geomExpression ~ comma ~ geomExpression ~ rightParen }
+
+spatialOperator  = { ^"INTERSECTS"
+                   | ^"EQUALS"
+                   | ^"DISJOINT"
+                   | ^"TOUCHES"
+                   | ^"WITHIN"
+                   | ^"OVERLAPS"
+                   | ^"CROSSES"
+                   | ^"CONTAINS" }
+
+// A geometric expression is a property name of a geometry-valued property,
+// a geometric literal (expressed as WKT) or a function that returns a
+// geometric value.
+
+geomExpression = _{ spatialLiteral | propertyName | function }
 
 
 
+// A temporal predicate evaluates if two temporal expressions satisfy the
+// specified temporal operator.
+temporalPredicate  = _{ temporalExpression ~ temporalOperator ~ temporalExpression }
+
+temporalExpression = _{ temporalLiteral | propertyName | function }
+
+temporalOperator   = { ^"ANYINTERACTS"
+                     | ^"BEFORE"
+                     | ^"AFTER"
+                     | ^"MEETS"
+                     | ^"METBY"
+                     | ^"TOVERLAPS"
+                     | ^"OVERLAPPEDBY"
+                     | ^"BEGINS"
+                     | ^"BEGUNBY"
+                     | ^"DURING"
+                     | ^"TCONTAINS"
+                     | ^"ENDS"
+                     | ^"ENDEDBY"
+                     | ^"TEQUALS" }
 
 
 
-
+// An array predicate evaluates if two array expressions statisfy the
+// specified comparison operator. The comparion operators include equality,
+// not equal, less than, greater than, less than or equal, greater than or equal,
+// superset, subset and overlap operators.
 arrayPredicate = _{ arrayExpression ~ arrayOperator ~ arrayExpression}
 
-
-
-
-
+// An array expression is a bracket-delimited, comma-separated list of array
+// elements.  An array element is either a character literal, a numeric literal,
+// a geometric literal, a temporal literal, a property name, a function, an
+// arithmetic expression or an array.
 
 arrayExpression = _{ propertyName | function | arrayLiteral}
 
-arrayLiteral = _{ leftBracket ~ rightBracket
-                | leftBracket ~ arrayElement ~ (comma ~ arrayElement)* ~ rightBracket}
+arrayLiteral    = _{ leftBracket ~ (arrayElement ~ (comma ~ arrayElement)*)? ~ rightBracket }
 
-arrayElement = _{ characterLiteral
+arrayElement    = _{ characterLiteral
+                  | numericLiteral
+                  | booleanLiteral
+                  | spatialLiteral
+                  | temporalLiteral
+                  | propertyName
+                  | function
+                  | arithmeticExpression
+                  | arrayLiteral }
+
+arrayOperator = { ^"AEQUALS" | ^"ACONTAINS" | ^"CONTAINED BY" | ^"AOVERLAPS" }
+
+
+
+// An arithemtic expression is an expression composed of an arithmetic
+// operand (a property name, a number or a function that returns a number),
+// an arithmetic operators (+,-,*,/) and another arithmetic operand.
+arithmeticOperand    = _{ numericLiteral | propertyName | function}
+
+arithmeticOperator   = { "+" | "-" | "*" | "/" }
+
+arithmeticExpression = _{ arithmeticTerm ~ (arithmeticOperand ~ arithmeticTerm)* }
+arithmeticTerm       = _{ arithmeticOperand | leftParen ~ arithmeticExpression ~ rightParen }
+
+
+
+// Definition of a PROPERTYNAME
+propertyName   = @{ "\""? ~ identifier ~ "\""? }
+identifier     = _{ alpha ~ (":" | "." | identifierPart)* }
+identifierPart = _{ alpha | ASCII_DIGIT | "$" | "_" }
+
+
+
+// Definition of a FUNCTION
+function     = _{ identifier ~ leftParen ~ argumentList* ~ rightParen }
+argumentList = _{ argument ~ (comma ~ argument)* }
+argument     = _{ characterLiteral
                 | numericLiteral
                 | booleanLiteral
                 | spatialLiteral
@@ -174,66 +187,14 @@ arrayElement = _{ characterLiteral
                 | propertyName
                 | function
                 | arithmeticExpression
-                | arrayLiteral }
-
-arrayOperator = _{ "AEQUALS"
-                 | "ACONTAINS"
-                 | "CONTAINED BY"
-                 | "AOVERLAPS" }
+                | arrayExpression }
 
 
 
-
-
-
-arithmeticExpression = _{ arithmeticOperand ~ arithmeticOperator ~ arithmeticOperand
-                        | leftParen ~ arithmeticExpression ~ rightParen }
-
-arithmeticOperator = _{ plusSign | minusSign | asterisk | solidus }
-
-arithmeticOperand = _{ numericLiteral
-                     | propertyName
-                     | function}
-
-
-
-
-propertyName = _{ identifier | doubleQuote ~ identifier ~ doubleQuote }
-
-identifier = _{ identifierStart ~ (colon | period | identifierPart)* }
-
-identifierStart = _{ alpha }
-
-identifierPart = _{ alpha | digit | dollar | underscore }
-
-
-
-
-
-function = _{ identifier ~ leftParen ~ argumentList+ ~ rightParen }
-
-argumentList = _{ argument ~ (comma ~ argument)* }
-
-argument = _{ characterLiteral
-         | numericLiteral
-         | booleanLiteral
-         | spatialLiteral
-         | temporalLiteral
-         | propertyName
-         | function
-         | arithmeticExpression
-         | arrayExpression}
-
-
-
-
-characterLiteral = _{ quote ~ character* ~ quote}
-
-character = _{ alpha | digit | extendedDigit | ideographic |
-            combiningChar | extender }
-
-
-
+// Definition of CHARACTER literals
+characterLiteral = { "'" ~ (!"'" ~ ANY)* ~ "'"}
+// character        = _{ alpha | ASCII_DIGIT | extendedDigit | ideographic
+//                     | combiningChar | extender }
 
 alpha = _{ '\u{0041}'..'\u{005A}' | '\u{0061}'..'\u{007A}' | '\u{00C0}'..'\u{00D6}' |
            '\u{00D8}'..'\u{00F6}' | '\u{00F8}'..'\u{00FF}' | '\u{0100}'..'\u{0131}' |
@@ -304,226 +265,107 @@ alpha = _{ '\u{0041}'..'\u{005A}' | '\u{0061}'..'\u{007A}' | '\u{00C0}'..'\u{00D
            '\u{3041}'..'\u{3094}' | '\u{30A1}'..'\u{30FA}' | '\u{3105}'..'\u{312C}' |
            '\u{AC00}'..'\u{D7A3}' }
 
-digit = _{ '\u{0030}'..'\u{0039}' }
-
-ideographic = _{ '\u{4E00}'..'\u{9FA5}' | '\u{3007}'..'\u{3007}' | '\u{3021}'..'\u{3029}' }
-
-combiningChar = _{ '\u{0300}'..'\u{0345}' | '\u{0360}'..'\u{0361}' | '\u{0483}'..'\u{0486}' |
-                   '\u{0591}'..'\u{05A1}' | '\u{05A3}'..'\u{05B9}' | '\u{05BB}'..'\u{05BD}' |
-                   '\u{05BF}'..'\u{05BF}' | '\u{05C1}'..'\u{05C2}' | '\u{05C4}'..'\u{05C4}' |
-                   '\u{064B}'..'\u{0652}' | '\u{0670}'..'\u{0670}' | '\u{06D6}'..'\u{06DC}' |
-                   '\u{06DD}'..'\u{06DF}' | '\u{06E0}'..'\u{06E4}' | '\u{06E7}'..'\u{06E8}' |
-                   '\u{06EA}'..'\u{06ED}' | '\u{0901}'..'\u{0903}' | '\u{093C}'..'\u{093C}' |
-                   '\u{093E}'..'\u{094C}' | '\u{094D}'..'\u{094D}' | '\u{0951}'..'\u{0954}' |
-                   '\u{0962}'..'\u{0963}' | '\u{0981}'..'\u{0983}' | '\u{09BC}'..'\u{09BC}' |
-                   '\u{09BE}'..'\u{09BE}' | '\u{09BF}'..'\u{09BF}' | '\u{09C0}'..'\u{09C4}' |
-                   '\u{09C7}'..'\u{09C8}' | '\u{09CB}'..'\u{09CD}' | '\u{09D7}'..'\u{09D7}' |
-                   '\u{09E2}'..'\u{09E3}' | '\u{0A02}'..'\u{0A02}' | '\u{0A3C}'..'\u{0A3C}' |
-                   '\u{0A3E}'..'\u{0A3E}' | '\u{0A3F}'..'\u{0A3F}' | '\u{0A40}'..'\u{0A42}' |
-                   '\u{0A47}'..'\u{0A48}' | '\u{0A4B}'..'\u{0A4D}' | '\u{0A70}'..'\u{0A71}' |
-                   '\u{0A81}'..'\u{0A83}' | '\u{0ABC}'..'\u{0ABC}' | '\u{0ABE}'..'\u{0AC5}' |
-                   '\u{0AC7}'..'\u{0AC9}' | '\u{0ACB}'..'\u{0ACD}' | '\u{0B01}'..'\u{0B03}' |
-                   '\u{0B3C}'..'\u{0B3C}' | '\u{0B3E}'..'\u{0B43}' | '\u{0B47}'..'\u{0B48}' |
-                   '\u{0B4B}'..'\u{0B4D}' | '\u{0B56}'..'\u{0B57}' | '\u{0B82}'..'\u{0B83}' |
-                   '\u{0BBE}'..'\u{0BC2}' | '\u{0BC6}'..'\u{0BC8}' | '\u{0BCA}'..'\u{0BCD}' |
-                   '\u{0BD7}'..'\u{0BD7}' | '\u{0C01}'..'\u{0C03}' | '\u{0C3E}'..'\u{0C44}' |
-                   '\u{0C46}'..'\u{0C48}' | '\u{0C4A}'..'\u{0C4D}' | '\u{0C55}'..'\u{0C56}' |
-                   '\u{0C82}'..'\u{0C83}' | '\u{0CBE}'..'\u{0CC4}' | '\u{0CC6}'..'\u{0CC8}' |
-                   '\u{0CCA}'..'\u{0CCD}' | '\u{0CD5}'..'\u{0CD6}' | '\u{0D02}'..'\u{0D03}' |
-                   '\u{0D3E}'..'\u{0D43}' | '\u{0D46}'..'\u{0D48}' | '\u{0D4A}'..'\u{0D4D}' |
-                   '\u{0D57}'..'\u{0D57}' | '\u{0E31}'..'\u{0E31}' | '\u{0E34}'..'\u{0E3A}' |
-                   '\u{0E47}'..'\u{0E4E}' | '\u{0EB1}'..'\u{0EB1}' | '\u{0EB4}'..'\u{0EB9}' |
-                   '\u{0EBB}'..'\u{0EBC}' | '\u{0EC8}'..'\u{0ECD}' | '\u{0F18}'..'\u{0F19}' |
-                   '\u{0F35}'..'\u{0F35}' | '\u{0F37}'..'\u{0F37}' | '\u{0F39}'..'\u{0F39}' |
-                   '\u{0F3E}'..'\u{0F3E}' | '\u{0F3F}'..'\u{0F3F}' | '\u{0F71}'..'\u{0F84}' |
-                   '\u{0F86}'..'\u{0F8B}' | '\u{0F90}'..'\u{0F95}' | '\u{0F97}'..'\u{0F97}' |
-                   '\u{0F99}'..'\u{0FAD}' | '\u{0FB1}'..'\u{0FB7}' | '\u{0FB9}'..'\u{0FB9}' |
-                   '\u{20D0}'..'\u{20DC}' | '\u{20E1}'..'\u{20E1}' | '\u{302A}'..'\u{302F}' |
-                   '\u{3099}'..'\u{3099}' | '\u{309A}'..'\u{309A}' }
-
-extendedDigit = _{ '\u{0660}'..'\u{0669}' | '\u{06F0}'..'\u{06F9}' | '\u{0966}'..'\u{096F}' |
-                   '\u{09E6}'..'\u{09EF}' | '\u{0A66}'..'\u{0A6F}' | '\u{0AE6}'..'\u{0AEF}' |
-                   '\u{0B66}'..'\u{0B6F}' | '\u{0BE7}'..'\u{0BEF}' | '\u{0C66}'..'\u{0C6F}' |
-                   '\u{0CE6}'..'\u{0CEF}' | '\u{0D66}'..'\u{0D6F}' | '\u{0E50}'..'\u{0E59}' |
-                   '\u{0ED0}'..'\u{0ED9}' | '\u{0F20}'..'\u{0F29}' }
-
-extender = _{      '\u{00B7}'..'\u{00B7}' | '\u{02D0}'..'\u{02D0}' | '\u{02D1}'..'\u{02D1}' |
-                   '\u{0387}'..'\u{0387}' | '\u{0640}'..'\u{0640}' | '\u{0E46}'..'\u{0E46}' |
-                   '\u{0EC6}'..'\u{0EC6}' | '\u{3005}'..'\u{3005}' | '\u{3031}'..'\u{3035}' |
-                   '\u{309D}'..'\u{309E}' | '\u{30FC}'..'\u{30FE}' }
-
-dollar = _{ "$" }
-
-underscore = _{ "_" }
-
-doubleQuote = _{ "\"" }
-
-quote = _{ "'" }
-
-leftBracket = _{ "[" }
-
-rightBracket = _{ "]" }
-
-leftParen = _{ "(" }
-
-rightParen = _{ ")" }
-
-asterisk = _{ "*" }
-
-plusSign = _{ "+" }
-
-comma = _{ "," }
-
-minusSign = _{ "-" }
-
-period = _{ "." }
-
-dotdot = _{ ".." }
-
-solidus = _{ "/" }
-
-colon = _{ ":" }
-
-lt = _{ "<" }
-
-eq = _{ "=" }
-
-gt = _{ ">" }
-
-bit = _{ "0" | "1" }
-
-hexit = _{ digit | "A" | "B" | "C" | "D" | "E" | "F" | "a" | "b" | "c" | "d" | "e" | "f" }
-
-
-
-
-numericLiteral = _{ unsignedNumericLiteral | signedNumericLiteral }
-
-unsignedNumericLiteral = _{ exactNumericLiteral | approximateNumericLiteral }
-
-signedNumericLiteral = _{ sign? ~ (exactNumericLiteral | approximateNumericLiteral) }
-
-exactNumericLiteral = _{ (unsignedInteger ~ (period ~ unsignedInteger?)?)
-                      | (period ~ unsignedInteger) }
-
-approximateNumericLiteral = _{ mantissa ~ "E" ~ exponent }
-
-mantissa = _{ exactNumericLiteral }
-
-exponent = _{ signedInteger }
-
-signedInteger = _{ sign? ~ unsignedInteger }
-
-unsignedInteger = _{ digit }
-
-sign = _{ plusSign | minusSign }
-
-
-
-
-
-booleanLiteral = _{ "TRUE" | "FALSE"}
-
-
-
-
-
-
-
-spatialLiteral = _{ pointTaggedText
-               | linestringTaggedText
-               | polygonTaggedText
-               | multipointTaggedText
-               | multilinestringTaggedText
-               | multipolygonTaggedText
-               | geometryCollectionTaggedText
-               | envelopeTaggedText}
-
-pointTaggedText = _{ "POINT" ~ pointText }
-
-linestringTaggedText = _{ "LINESTRING" ~ lineStringText }
-
-polygonTaggedText = _{ "POLYGON" ~ polygonText }
-
-multipointTaggedText = _{ "MULTIPOINT" ~ multiPointText }
-
-multilinestringTaggedText = _{ "MULTILINESTRING" ~ multiLineStringText }
-
-multipolygonTaggedText = _{ "MULTIPOLYGON" ~ multiPolygonText }
-
-geometryCollectionTaggedText = _{ "GEOMETRYCOLLECTION" ~ geometryCollectionText }
-
-pointText = _{ leftParen ~ point ~ rightParen }
-
-point = _{ xCoord ~ yCoord ~ zCoord? }
-
-xCoord = _{ signedNumericLiteral }
-
-yCoord = _{ signedNumericLiteral }
-
-zCoord = _{ signedNumericLiteral }
-
-lineStringText = _{ leftParen ~ point ~ (comma ~ point)* ~ rightParen }
-
-polygonText = _{ leftParen ~ lineStringText ~ (comma ~ lineStringText)* ~ rightParen }
-
-multiPointText = _{ leftParen ~ pointText ~ (comma ~ pointText)* ~ rightParen }
-
-multiLineStringText = _{ leftParen ~ lineStringText ~ (comma ~ lineStringText)* ~ rightParen }
-
-multiPolygonText = _{ leftParen ~ polygonText ~ (comma ~ polygonText)* ~ rightParen }
-
-geometryCollectionText = _{ leftParen ~ spatialLiteral ~ (comma ~ spatialLiteral)* ~ rightParen }
-
-envelopeTaggedText = _{ "ENVELOPE" ~ envelopeText}
-
-envelopeText = _{ leftParen ~ westBoundLon ~ comma ~ southBoundLat ~ comma ~ (minElev ~ comma)? ~ eastBoundLon ~ comma ~ northBoundLat ~ (comma ~ maxElev)? ~ rightParen }
-
-westBoundLon = _{ signedNumericLiteral }
-
-eastBoundLon = _{ signedNumericLiteral }
-
-northBoundLat = _{ signedNumericLiteral }
-
-southBoundLat = _{ signedNumericLiteral }
-
-minElev = _{ signedNumericLiteral }
-
-maxElev = _{ signedNumericLiteral }
-
-
-
-
-
-
-
-temporalLiteral = _{ instant | interval}
-
-instant = _{ fullDate | (fullDate ~ "T" ~ utcTime)}
-
-interval = _{ solidus
-         | (solidus ~ dotdot)
-         | (dotdot ~ solidus)
-         | (instant ~ solidus)
-         | (solidus ~ instant)
-         | (instant ~ solidus ~ dotdot)
-         | (dotdot ~ solidus ~ instant)
-         | (instant ~ solidus ~ instant)}
-
-fullDate   = _{ dateYear ~ "-" ~ dateMonth ~ "-" ~ dateDay}
-
-dateYear   = _{ digit{4} }
-
-dateMonth  = _{ digit{2} }
-
-dateDay    = _{ digit{2} }
-
-utcTime  = _{ timeHour ~ ":" ~ timeMinute ~ ":" ~ timeSecond ~ timeZoneOffset?}
-
-timeZoneOffset = _{ "Z" | (sign ~ timeHour ~(colon? ~ timeMinute)?) }
-
-timeHour   = _{ digit{2} }
-
-timeMinute = _{ digit{2} }
-
-timeSecond = _{ digit{2} ~ (period ~ digit+)? }
+// ideographic    = { '\u{4E00}'..'\u{9FA5}' | '\u{3007}'..'\u{3007}' | '\u{3021}'..'\u{3029}' }
+
+// combiningChar  = { '\u{0300}'..'\u{0345}' | '\u{0360}'..'\u{0361}' | '\u{0483}'..'\u{0486}' |
+//                    '\u{0591}'..'\u{05A1}' | '\u{05A3}'..'\u{05B9}' | '\u{05BB}'..'\u{05BD}' |
+//                    '\u{05BF}'..'\u{05BF}' | '\u{05C1}'..'\u{05C2}' | '\u{05C4}'..'\u{05C4}' |
+//                    '\u{064B}'..'\u{0652}' | '\u{0670}'..'\u{0670}' | '\u{06D6}'..'\u{06DC}' |
+//                    '\u{06DD}'..'\u{06DF}' | '\u{06E0}'..'\u{06E4}' | '\u{06E7}'..'\u{06E8}' |
+//                    '\u{06EA}'..'\u{06ED}' | '\u{0901}'..'\u{0903}' | '\u{093C}'..'\u{093C}' |
+//                    '\u{093E}'..'\u{094C}' | '\u{094D}'..'\u{094D}' | '\u{0951}'..'\u{0954}' |
+//                    '\u{0962}'..'\u{0963}' | '\u{0981}'..'\u{0983}' | '\u{09BC}'..'\u{09BC}' |
+//                    '\u{09BE}'..'\u{09BE}' | '\u{09BF}'..'\u{09BF}' | '\u{09C0}'..'\u{09C4}' |
+//                    '\u{09C7}'..'\u{09C8}' | '\u{09CB}'..'\u{09CD}' | '\u{09D7}'..'\u{09D7}' |
+//                    '\u{09E2}'..'\u{09E3}' | '\u{0A02}'..'\u{0A02}' | '\u{0A3C}'..'\u{0A3C}' |
+//                    '\u{0A3E}'..'\u{0A3E}' | '\u{0A3F}'..'\u{0A3F}' | '\u{0A40}'..'\u{0A42}' |
+//                    '\u{0A47}'..'\u{0A48}' | '\u{0A4B}'..'\u{0A4D}' | '\u{0A70}'..'\u{0A71}' |
+//                    '\u{0A81}'..'\u{0A83}' | '\u{0ABC}'..'\u{0ABC}' | '\u{0ABE}'..'\u{0AC5}' |
+//                    '\u{0AC7}'..'\u{0AC9}' | '\u{0ACB}'..'\u{0ACD}' | '\u{0B01}'..'\u{0B03}' |
+//                    '\u{0B3C}'..'\u{0B3C}' | '\u{0B3E}'..'\u{0B43}' | '\u{0B47}'..'\u{0B48}' |
+//                    '\u{0B4B}'..'\u{0B4D}' | '\u{0B56}'..'\u{0B57}' | '\u{0B82}'..'\u{0B83}' |
+//                    '\u{0BBE}'..'\u{0BC2}' | '\u{0BC6}'..'\u{0BC8}' | '\u{0BCA}'..'\u{0BCD}' |
+//                    '\u{0BD7}'..'\u{0BD7}' | '\u{0C01}'..'\u{0C03}' | '\u{0C3E}'..'\u{0C44}' |
+//                    '\u{0C46}'..'\u{0C48}' | '\u{0C4A}'..'\u{0C4D}' | '\u{0C55}'..'\u{0C56}' |
+//                    '\u{0C82}'..'\u{0C83}' | '\u{0CBE}'..'\u{0CC4}' | '\u{0CC6}'..'\u{0CC8}' |
+//                    '\u{0CCA}'..'\u{0CCD}' | '\u{0CD5}'..'\u{0CD6}' | '\u{0D02}'..'\u{0D03}' |
+//                    '\u{0D3E}'..'\u{0D43}' | '\u{0D46}'..'\u{0D48}' | '\u{0D4A}'..'\u{0D4D}' |
+//                    '\u{0D57}'..'\u{0D57}' | '\u{0E31}'..'\u{0E31}' | '\u{0E34}'..'\u{0E3A}' |
+//                    '\u{0E47}'..'\u{0E4E}' | '\u{0EB1}'..'\u{0EB1}' | '\u{0EB4}'..'\u{0EB9}' |
+//                    '\u{0EBB}'..'\u{0EBC}' | '\u{0EC8}'..'\u{0ECD}' | '\u{0F18}'..'\u{0F19}' |
+//                    '\u{0F35}'..'\u{0F35}' | '\u{0F37}'..'\u{0F37}' | '\u{0F39}'..'\u{0F39}' |
+//                    '\u{0F3E}'..'\u{0F3E}' | '\u{0F3F}'..'\u{0F3F}' | '\u{0F71}'..'\u{0F84}' |
+//                    '\u{0F86}'..'\u{0F8B}' | '\u{0F90}'..'\u{0F95}' | '\u{0F97}'..'\u{0F97}' |
+//                    '\u{0F99}'..'\u{0FAD}' | '\u{0FB1}'..'\u{0FB7}' | '\u{0FB9}'..'\u{0FB9}' |
+//                    '\u{20D0}'..'\u{20DC}' | '\u{20E1}'..'\u{20E1}' | '\u{302A}'..'\u{302F}' |
+//                    '\u{3099}'..'\u{3099}' | '\u{309A}'..'\u{309A}' }
+
+// extendedDigit  = { '\u{0660}'..'\u{0669}' | '\u{06F0}'..'\u{06F9}' | '\u{0966}'..'\u{096F}' |
+//                    '\u{09E6}'..'\u{09EF}' | '\u{0A66}'..'\u{0A6F}' | '\u{0AE6}'..'\u{0AEF}' |
+//                    '\u{0B66}'..'\u{0B6F}' | '\u{0BE7}'..'\u{0BEF}' | '\u{0C66}'..'\u{0C6F}' |
+//                    '\u{0CE6}'..'\u{0CEF}' | '\u{0D66}'..'\u{0D6F}' | '\u{0E50}'..'\u{0E59}' |
+//                    '\u{0ED0}'..'\u{0ED9}' | '\u{0F20}'..'\u{0F29}' }
+
+// extender       = { '\u{00B7}'..'\u{00B7}' | '\u{02D0}'..'\u{02D0}' | '\u{02D1}'..'\u{02D1}' |
+//                    '\u{0387}'..'\u{0387}' | '\u{0640}'..'\u{0640}' | '\u{0E46}'..'\u{0E46}' |
+//                    '\u{0EC6}'..'\u{0EC6}' | '\u{3005}'..'\u{3005}' | '\u{3031}'..'\u{3035}' |
+//                    '\u{309D}'..'\u{309E}' | '\u{30FC}'..'\u{30FE}' }
+
+
+leftBracket  = { "[" }
+rightBracket = { "]" }
+leftParen    = { "(" }
+rightParen   = { ")" }
+
+comma = { "," }
+
+//Definition of NUMERIC literals
+numericLiteral = @{ int ~ ("." ~ ASCII_DIGIT*)? ~ (^"e" ~ int)? }
+int            = _{ ("+" | "-")? ~ ASCII_DIGIT+ }
+
+
+
+// Boolean literal
+booleanLiteral = { ^"TRUE" | ^"FALSE"}
+
+
+
+// Definition of GEOMETRIC literal
+spatialLiteral = _{ point
+                  | linestring
+                  | polygon
+                  | multipoint
+                  | multilinestring
+                  | multipolygon
+                  | geometryCollection
+                  | envelope }
+
+coords = _{ coord{2,3} }
+coord  = @{ ("+" | "-")? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
+
+point              = { "POINT" ~ leftParen ~ coords ~ rightParen }
+linestring         = { "LINESTRING" ~ lineStringCoords }
+polygon            = { "POLYGON" ~ polygonCoords }
+multipoint         = { "MULTIPOINT" ~ multiPointCoords }
+multilinestring    = { "MULTILINESTRING" ~ multiLineStringCoords }
+multipolygon       = { "MULTIPOLYGON" ~ multiPolygonCoords }
+geometryCollection = { "GEOMETRYCOLLECTION" ~ geometryCollectionCoords }
+envelope           = { "ENVELOPE" ~ envelopeCoords }
+
+lineStringCoords         = _{ leftParen ~ coords ~ (comma ~ coords)* ~ rightParen }
+polygonCoords            = _{ leftParen ~ lineStringCoords ~ (comma ~ lineStringCoords)* ~ rightParen }
+multiPointCoords         = _{ leftParen ~ leftParen ~ coords ~ rightParen ~ (comma ~ leftParen ~ coords ~ rightParen)* ~ rightParen }
+multiLineStringCoords    = _{ leftParen ~ lineStringCoords ~ (comma ~ lineStringCoords)* ~ rightParen }
+multiPolygonCoords       = _{ leftParen ~ polygonCoords ~ (comma ~ polygonCoords)* ~ rightParen }
+geometryCollectionCoords = _{ leftParen ~ spatialLiteral ~ (comma ~ spatialLiteral)* ~ rightParen }
+envelopeCoords           = _{ leftParen ~ coord ~ ((comma ~ coord){3} | (comma ~ coord){5}) ~ rightParen }
+
+
+
+// Definition of TEMPORAL literals
+temporalLiteral = @{ interval | instant }
+interval        = { (instant | "..")? ~ "/" ~ (instant | "..")? }
+instant         = { ASCII_DIGIT{4} ~ "-" ~ ASCII_DIGIT{2} ~ "-" ~ ASCII_DIGIT{2} ~ ("T" ~ utcTime)? }
+utcTime         = { ASCII_DIGIT{2} ~ ":" ~ ASCII_DIGIT{2} ~ ":" ~ timeSecond ~ timeZoneOffset?}
+timeZoneOffset  = { "Z" | (("+" | "-") ~ ASCII_DIGIT{2} ~(":"? ~ ASCII_DIGIT{2})?) }
+timeSecond      = { ASCII_DIGIT{2} ~ ("." ~ ASCII_DIGIT+)? }
