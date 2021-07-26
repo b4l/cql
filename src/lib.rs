@@ -2,26 +2,37 @@ extern crate pest;
 #[macro_use]
 extern crate pest_derive;
 
-// use pest::Parser;
+use pest::{error::Error, Parser};
 
-// #[derive(Parser)]
-// #[grammar = "../schema/cql.pest"]
-// struct CqlParser;
+#[derive(Parser)]
+#[grammar = "../schema/cql.pest"]
+struct CqlParser;
+
+pub fn to_sql(query: &str) -> Result<String, Error<Rule>> {
+    let mut tokens: Vec<String> = Vec::new();
+
+    let pairs = CqlParser::parse(Rule::cql, &query)?;
+
+    for pair in pairs {
+        match pair.as_rule() {
+            Rule::EOI => continue,
+            Rule::propertyName => tokens.push(format!("\"{}\"", pair.as_str())),
+            _ => tokens.push(pair.as_str().to_string()),
+        }
+    }
+
+    Ok(tokens.join(" "))
+}
 
 #[cfg(test)]
 mod tests {
+    use crate::{CqlParser, Rule};
     use pest::Parser;
-
-    #[derive(Parser)]
-    #[grammar = "../schema/cql.pest"]
-    struct CqlParser;
 
     #[test]
     fn parse_pest() {
-        let examples = [
-            "landsat:scene_id = 'LC82030282019133LGN00'",
+        let examples = vec![
             "eo:instrument LIKE 'OLI#' WILDCARD '#'",
-            "landsat:wrs_path IN ('153','154','155')",
             "eq:cloud_cover < 0.1 AND landsat:wrs_row=28 AND landsat:wrs_path=203",
             "ro:cloud_cover=0.1 OR ro:cloud_cover=0.2",
             "ro:cloud_cover IN (0.1,0.2)",
@@ -55,12 +66,34 @@ mod tests {
             "WITHIN(location,ENVELOPE(-118,33.8,-117.9,34))",
             "INTERSECTS(geometry,POLYGON((-10.0 -10.0,10.0 -10.0,10.0 10.0,-10.0 -10.0)))",
             "floors>5 AND WITHIN(geometry,ENVELOPE(-118,33.8,-117.9,34))",
-            ];
-        for example in &examples {
+        ];
+        for example in examples {
             println!("Query: {}", example);
-            let query = CqlParser::parse(Rule::cql, &example)
-                .expect("Failed to parse query");
+            let query = CqlParser::parse(Rule::cql, &example).expect("Failed to parse query");
             println!("{:#?}", query);
         }
+    }
+
+    #[test]
+    fn to_sql() {
+        // example01.txt
+        let query = "landsat:scene_id = 'LC82030282019133LGN00'";
+        println!("Query: {}", query);
+
+        let pairs = CqlParser::parse(Rule::cql, &query).expect("Failed to parse query");
+        println!("{:#?}", pairs);
+
+        let sql = crate::to_sql(query).unwrap();
+        assert_eq!(sql, "\"landsat:scene_id\" = 'LC82030282019133LGN00'");
+
+        // example03.txt
+        let query = "landsat:wrs_path IN ('153','154','155')";
+        println!("Query: {}", query);
+
+        let pairs = CqlParser::parse(Rule::cql, &query).expect("Failed to parse query");
+        println!("{:#?}", pairs);
+
+        let sql = crate::to_sql(query).unwrap();
+        assert_eq!(sql, "\"landsat:wrs_path\" IN ( '153','154','155' )");
     }
 }

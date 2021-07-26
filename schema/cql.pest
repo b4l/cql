@@ -72,7 +72,7 @@ between = { ^"BETWEEN" }
 // IN LIST predicate
 isInListPredicate = _{ inListOperand ~ not? ~ inListOperator ~ leftParen ~ inList ~ rightParen }
 
-inList            = _{ inListOperand ~ ( comma ~ inListOperand )* }
+inList            = { inListOperand ~ ( comma ~ inListOperand )* }
 
 inListOperand     = _{ scalarExpression | temporalLiteral | spatialLiteral }
 
