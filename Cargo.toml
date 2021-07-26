@@ -1,9 +1,12 @@
 [package]
 name = "cql"
 version = "0.1.0"
+author = ["Balthasar Teuscher <balthasar.teuscher@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Common Query Language (CQL) parser"
+repository = "https://github.com/b4l/cql"
+license = "MIT OR Apache-2.0"
+keywords = ["cql", "ogc", "geo", "geospatial"]
 
 [dependencies]
 pest = "2.1"

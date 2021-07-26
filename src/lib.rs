@@ -8,6 +8,7 @@ use pest::{error::Error, Parser};
 #[grammar = "../schema/cql.pest"]
 struct CqlParser;
 
+/// Translate CQL text query to SQL string.
 pub fn to_sql(query: &str) -> Result<String, Error<Rule>> {
     let mut tokens: Vec<String> = Vec::new();
 
